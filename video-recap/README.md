@@ -92,6 +92,49 @@ python reddit_story.py --story story.txt --background gameplay.mp4 --out story.m
 - `--voice en-US-GuyNeural` — для англоязычных историй (там выше оплата за просмотры).
 - `--music`, `--words 1` (по одному слову), `--upper`, `--background-volume 0.1`.
 
+### Адаптация текста через Gemini (n8n)
+
+Скрипт может пересказать историю заново: сюжет и смысл те же, а структура, слова,
+крючок в начале и вопрос зрителю в конце каждый раз новые. Запрос идёт в ваш n8n,
+а n8n вызывает Gemini с вашими ключами.
+
+Настройка n8n (один раз):
+1. В n8n: **Workflows → Import from File** → `n8n/adapt-story.json`.
+2. Откройте узел **Google Gemini Chat Model** и выберите свои креды Gemini.
+   Модель можно поменять там же (по умолчанию `gemini-2.5-flash`).
+3. Нажмите **Active** (включить workflow). Адрес вебхука:
+   `http://localhost:5678/webhook/adapt-story`. Если адрес другой — передайте
+   `--n8n-url` или задайте переменную окружения `N8N_WEBHOOK_URL`.
+
+Сначала посмотреть и поправить текст (рекомендую — ваши правки = больше оригинальности):
+
+```bash
+python rewrite.py --story story.txt --out adapted.txt --variants 3 --seconds 60
+python reddit_story.py --story adapted_1.txt --background backgrounds/ --out story.mp4
+```
+
+Или сразу в видео:
+
+```bash
+python reddit_story.py --story story.txt --background backgrounds/ --rewrite --style irony
+```
+
+Стили: `drama`, `irony`, `calm`, `suspense` или свой текст (`--style "как стендап-комик"`).
+`--language english` — написать историю на английском (не забудьте английский `--voice`).
+
+### Сгенерированные фоны (`satisfying.py`)
+
+Вместо геймплея — анимации, которые рисует код. Они полностью ваши: без чужих прав
+и страйков, и каждая новая.
+
+```bash
+python satisfying.py --count 6 --duration 180 --out backgrounds/bg.mp4
+python reddit_story.py --story story.txt --background backgrounds/ --out story.mp4
+```
+
+Режимы (`--mode`): `bounce` — растущий шарик прыгает в круге, `orbits` — точки на
+кольцах выстраиваются в линию, `spiro` — спирограф; `random` — случайный.
+
 Геймплей лучше записывать самому (например, свой паркур в Minecraft — Mojang разрешает
 монетизировать видео с игрой). Чужие нарезки Subway Surfers и т. п. могут получить заявки.
 

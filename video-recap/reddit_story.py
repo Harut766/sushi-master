@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import card  # noqa: E402
+import rewrite  # noqa: E402
 import subtitles  # noqa: E402
 import tts  # noqa: E402
 from utils import has_audio, media_duration, require_ffmpeg, run  # noqa: E402
@@ -36,6 +37,14 @@ def parse_args():
     g.add_argument("--engine", choices=tts.ENGINES, default="edge")
     g.add_argument("--voice", default=None, help="например ru-RU-DmitryNeural, en-US-GuyNeural")
     g.add_argument("--rate", default="+10%", help="скорость речи")
+
+    g = p.add_argument_group("адаптация текста через Gemini (n8n)")
+    g.add_argument("--rewrite", action="store_true",
+                   help="пересказать историю заново: смысл тот же, подача и слова новые")
+    g.add_argument("--style", help=f"{', '.join(rewrite.STYLES)} или свой; по умолчанию случайный")
+    g.add_argument("--seconds", type=float, default=60, help="желаемая длина истории")
+    g.add_argument("--language", default="русский")
+    g.add_argument("--n8n-url", default=rewrite.DEFAULT_URL)
 
     g = p.add_argument_group("карточка поста")
     g.add_argument("--subreddit", default="r/AskReddit")
@@ -64,10 +73,12 @@ def read_story(path):
     lines = path.read_text(encoding="utf-8").strip().splitlines()
     if len(lines) < 2:
         raise SystemExit("В файле истории нужна первая строка-заголовок и сам текст ниже.")
-    title = lines[0].strip()
-    # Точка в конце нужна, чтобы заголовок озвучивался отдельной фразой.
-    spoken = title if title[-1] in ".!?…" else title + "."
-    return title, spoken, "\n".join(lines[1:])
+    return lines[0].strip(), "\n".join(lines[1:])
+
+
+def spoken(title):
+    """Точка в конце нужна, чтобы заголовок озвучивался отдельной фразой."""
+    return title if title[-1] in ".!?…" else title + "."
 
 
 def split_parts(body, part_length):
@@ -144,13 +155,22 @@ def main():
     if args.voice is None:
         args.voice = "ru" if args.engine == "espeak" else "ru-RU-DmitryNeural"
 
-    title, spoken_title, text = read_story(args.story)
+    title, text = read_story(args.story)
+    if args.rewrite:
+        print("0/3 Адаптирую историю через Gemini…")
+        title, text = rewrite.adapt(title, text, args.n8n_url, args.style,
+                                    args.seconds, args.language)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        saved = args.out.with_suffix(".txt")
+        saved.write_text(f"{title}\n{text}\n", encoding="utf-8")
+        print(f"   новый текст сохранён в {saved}")
     background = pick_background(args.background).resolve()
     workdir = Path(tempfile.mkdtemp(prefix="reddit_"))
     try:
         print("1/3 Озвучиваю историю…")
         speak = dict(engine=args.engine, voice=args.voice, rate=args.rate)
-        title_spoken = tts.synthesize(tts.split_sentences(spoken_title), workdir, prefix="title", **speak)
+        title_spoken = tts.synthesize(tts.split_sentences(spoken(title)), workdir,
+                                      prefix="title", **speak)
         body = tts.synthesize(tts.split_sentences(text), workdir, prefix="body", **speak)
         parts = split_parts(body, args.part_length)
 
