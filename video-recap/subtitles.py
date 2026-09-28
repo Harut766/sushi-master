@@ -20,8 +20,12 @@ def _chunks(sentence, max_words):
     return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
 
 
-def build_ass(lines, path, fmt="vertical", max_words=4, upper=False, font="Arial"):
+def build_ass(lines, path, fmt="vertical", max_words=4, upper=False, font="Arial", center=False):
     width, height, size, margin = SIZES[fmt]
+    # center — крупные слова посередине экрана, как в Reddit-историях.
+    alignment = 5 if center else 2
+    if center:
+        size = int(size * 1.3)
     events = []
     for line in lines:
         chunks = _chunks(line.text, max_words)
@@ -45,7 +49,7 @@ def build_ass(lines, path, fmt="vertical", max_words=4, upper=False, font="Arial
         "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
         "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
         f"Style: Default,{font},{size},&H00FFFFFF,&H000000FF,&H00000000,&H64000000,"
-        f"-1,0,0,0,100,100,0,0,1,5,2,2,60,60,{margin},1\n\n"
+        f"-1,0,0,0,100,100,0,0,1,5,2,{alignment},60,60,{margin},1\n\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
         + "\n".join(events) + "\n",

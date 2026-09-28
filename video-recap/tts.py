@@ -9,6 +9,7 @@ import asyncio
 import re
 import shutil
 from dataclasses import dataclass
+from pathlib import Path
 
 from utils import media_duration, run
 
@@ -54,34 +55,53 @@ def _espeak(text, out_path, voice, rate):
 ENGINES = {"edge": _edge, "espeak": _espeak}
 
 
-def narrate(text, workdir, engine="edge", voice="ru-RU-DmitryNeural", rate="+0%"):
-    """Озвучивает текст по предложениям и склеивает в один narration.wav.
-    Возвращает путь к файлу и тайминги каждого предложения (для субтитров)."""
+@dataclass
+class Spoken:
+    text: str
+    wav: Path
+    duration: float
+
+
+def synthesize(sentences, workdir, engine="edge", voice="ru-RU-DmitryNeural", rate="+0%",
+               prefix="tts"):
+    """Озвучивает каждое предложение в отдельный wav (48 кГц, стерео)."""
     synth = ENGINES[engine]
-    sentences = split_sentences(text)
-    if not sentences:
-        raise SystemExit("Файл с текстом пустой.")
-
-    silence = workdir / "pause.wav"
-    run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-t", PAUSE,
-         "-i", "anullsrc=r=48000:cl=stereo", "-c:a", "pcm_s16le", silence])
-
-    parts, lines, t = [], [], 0.0
+    result = []
     for i, sentence in enumerate(sentences, 1):
         print(f"  озвучка {i}/{len(sentences)}: {sentence[:60]}")
-        raw = workdir / f"tts_{i:03d}.{'mp3' if engine == 'edge' else 'wav'}"
-        wav = workdir / f"tts_{i:03d}_norm.wav"
+        raw = workdir / f"{prefix}_{i:03d}.{'mp3' if engine == 'edge' else 'wav'}"
+        wav = workdir / f"{prefix}_{i:03d}_norm.wav"
         synth(sentence, raw, voice, rate)
         run(["ffmpeg", "-y", "-v", "error", "-i", raw,
              "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", wav])
-        duration = media_duration(wav)
-        lines.append(Line(sentence, t, t + duration))
-        parts += [wav, silence]
-        t += duration + PAUSE
+        result.append(Spoken(sentence, wav, media_duration(wav)))
+    return result
 
-    concat_list = workdir / "narration.txt"
+
+def assemble(spoken, workdir, name="narration"):
+    """Склеивает озвученные предложения с паузами в один wav.
+    Возвращает путь к файлу и тайминги каждого предложения (для субтитров)."""
+    silence = workdir / "pause.wav"
+    if not silence.exists():
+        run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-t", PAUSE,
+             "-i", "anullsrc=r=48000:cl=stereo", "-c:a", "pcm_s16le", silence])
+
+    parts, lines, t = [], [], 0.0
+    for item in spoken:
+        lines.append(Line(item.text, t, t + item.duration))
+        parts += [item.wav, silence]
+        t += item.duration + PAUSE
+
+    concat_list = workdir / f"{name}.txt"
     concat_list.write_text("".join(f"file '{p.name}'\n" for p in parts), encoding="utf-8")
-    narration = workdir / "narration.wav"
+    narration = workdir / f"{name}.wav"
     run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0",
          "-i", concat_list.name, "-c", "copy", narration.name], cwd=workdir)
     return narration, lines
+
+
+def narrate(text, workdir, engine="edge", voice="ru-RU-DmitryNeural", rate="+0%"):
+    sentences = split_sentences(text)
+    if not sentences:
+        raise SystemExit("Файл с текстом пустой.")
+    return assemble(synthesize(sentences, workdir, engine, voice, rate), workdir)
