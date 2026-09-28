@@ -12,6 +12,7 @@ import json
 import os
 import random
 import re
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -71,19 +72,28 @@ def adapt(title, story, url=DEFAULT_URL, style=None, seconds=60, language="ру�
         headers={"Content-Type": "application/json"}, method="POST",
     )
     last_error = None
-    for _ in range(3):
+    for attempt in range(3):
         try:
             with urllib.request.urlopen(request, timeout=180) as response:
                 body = json.loads(response.read().decode("utf-8"))
             if isinstance(body, list):  # n8n иногда отвечает массивом
                 body = body[0]
             return _parse(body.get("text", "") if isinstance(body, dict) else str(body))
+        except urllib.error.HTTPError as exc:
+            # n8n ответил, но workflow упал (например, Gemini перегружен — 503).
+            detail = exc.read().decode("utf-8", errors="replace")[:500]
+            last_error = f"n8n вернул {exc.code}: {detail}"
+            if exc.code < 500:
+                raise SystemExit(f"{last_error}\nПроверьте адрес вебхука и что workflow опубликован.")
+            print(f"  [!] ошибка в n8n/Gemini, пробую ещё раз ({attempt + 1}/3)…")
+            time.sleep(10)
         except urllib.error.URLError as exc:
             raise SystemExit(f"Не удалось достучаться до n8n ({url}): {exc}\n"
                              "Проверьте, что n8n запущен и workflow активирован.") from exc
         except (RuntimeError, json.JSONDecodeError) as exc:
             last_error = exc  # модель ответила криво — просим ещё раз
-    raise RuntimeError(f"Gemini трижды вернул некорректный ответ: {last_error}")
+    raise SystemExit(f"Не получилось после 3 попыток. Последняя ошибка: {last_error}\n"
+                     "Посмотрите вкладку Executions в n8n.")
 
 
 def main():
