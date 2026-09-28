@@ -119,8 +119,7 @@ def main():
         print("4/4 Свожу звук и субтитры…")
         subs = None
         if lines and not args.no_subs:
-            subs = workdir / "subs.ass"
-            subtitles.build_ass(lines, subs, args.format, args.words, args.upper)
+            subs = subtitles.build_overlay(lines, workdir, args.format, args.words, args.upper)
         args.out.parent.mkdir(parents=True, exist_ok=True)
         render.final_mix(joined, args.out, workdir, narration,
                          args.music.resolve() if args.music else None, subs,

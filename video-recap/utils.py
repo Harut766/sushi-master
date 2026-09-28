@@ -1,7 +1,10 @@
-"""Общие помощники: запуск ffmpeg/ffprobe и чтение длительности файлов."""
+"""Общие помощники: запуск ffmpeg/ffprobe, длительность файлов, шрифты."""
 
 import shutil
 import subprocess
+from pathlib import Path
+
+from PIL import ImageFont
 
 
 def require_ffmpeg():
@@ -36,3 +39,33 @@ def has_audio(path):
         "-show_entries", "stream=index", "-of", "csv=p=0", path,
     ]).stdout
     return bool(out.strip())
+
+
+FONT_CANDIDATES = [
+    "C:/Windows/Fonts/arialbd.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/Library/Fonts/Arial Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+]
+
+
+def load_font(size, path=None):
+    for candidate in [path] + FONT_CANDIDATES:
+        if candidate and Path(candidate).exists():
+            return ImageFont.truetype(str(candidate), size)
+    raise SystemExit("Не найден шрифт с кириллицей. Укажите путь к .ttf через --font.")
+
+
+def wrap_text(draw, text, font, width):
+    lines, line = [], ""
+    for word in text.split():
+        candidate = f"{line} {word}".strip()
+        if draw.textlength(candidate, font=font) <= width or not line:
+            line = candidate
+        else:
+            lines.append(line)
+            line = word
+    if line:
+        lines.append(line)
+    return lines

@@ -69,9 +69,12 @@ def final_mix(joined, out, workdir, narration=None, music=None, subs=None,
         idx += 1
     audio.append(f"{''.join(labels)}amix=inputs={len(labels)}:duration=first:normalize=0,"
                  "alimiter=limit=0.95[aout]")
-    # Путь к субтитрам — относительный (ffmpeg запускается из workdir),
-    # так не нужно экранировать двоеточия в путях Windows.
-    video = f"[0:v]subtitles={subs.name}[vout]" if subs else "[0:v]null[vout]"
+    if subs:
+        # Субтитры — отдельный поток PNG с прозрачностью (см. subtitles.py).
+        cmd += ["-f", "concat", "-safe", "0", "-i", subs.name]
+        video = f"[0:v][{idx}:v]overlay=0:0:format=auto:shortest=1,format=yuv420p[vout]"
+    else:
+        video = "[0:v]null[vout]"
 
     cmd += [
         "-filter_complex", ";".join(audio + [video]),

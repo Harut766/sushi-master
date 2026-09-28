@@ -119,16 +119,16 @@ def render_part(background, narration, card_png, subs, card_until, length, out, 
 
     cmd = ["ffmpeg", "-y", "-v", "error",
            "-stream_loop", "-1", "-ss", f"{start:.2f}", "-i", background,
-           "-i", narration.name, "-loop", "1", "-i", card_png.name]
+           "-i", narration.name, "-loop", "1", "-i", card_png.name,
+           "-f", "concat", "-safe", "0", "-i", subs.name]
     audio = ["[1:a]volume=1.0[n]"]
     labels = ["[n]"]
-    idx = 3
     if background_volume > 0 and has_audio(background):
         audio.append(f"[0:a]volume={background_volume}[b]")
         labels.append("[b]")
     if music:
         cmd += ["-stream_loop", "-1", "-i", music]
-        audio.append(f"[{idx}:a]volume={music_volume}[m]")
+        audio.append(f"[4:a]volume={music_volume}[m]")
         labels.append("[m]")
     audio.append(f"{''.join(labels)}amix=inputs={len(labels)}:duration=first:normalize=0,"
                  "alimiter=limit=0.95[aout]")
@@ -136,7 +136,7 @@ def render_part(background, narration, card_png, subs, card_until, length, out, 
         "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
         "fps=30,setsar=1[bg]",
         f"[bg][2:v]overlay=(W-w)/2:(H-h)/2:enable='lte(t,{card_until:.2f})'[ov]",
-        f"[ov]subtitles={subs.name},format=yuv420p[vout]",
+        "[ov][3:v]overlay=0:0:format=auto:shortest=1,format=yuv420p[vout]",
     ]
     cmd += [
         "-filter_complex", ";".join(video + audio),
@@ -188,10 +188,10 @@ def main():
                                         prefix=f"label{n}", **speak)
             narration, lines = tts.assemble(intro + part, workdir, name=f"narration{n}")
             card_until = lines[len(intro) - 1].end
-            subs = workdir / f"subs{n}.ass"
             # Пока видна карточка, субтитры не нужны — заголовок и так на экране.
-            subtitles.build_ass(lines[len(intro):], subs, "vertical", args.words,
-                                args.upper, center=True)
+            subs = subtitles.build_overlay(lines[len(intro):], workdir, "vertical", args.words,
+                                           args.upper, center=True, font_path=args.font,
+                                           name=f"subs{n}")
             out = args.out if len(parts) == 1 else \
                 args.out.with_name(f"{args.out.stem}_part{n}{args.out.suffix}")
             render_part(background, narration, card_png, subs, card_until,

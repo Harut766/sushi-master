@@ -183,8 +183,11 @@ def main():
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     seed = args.seed if args.seed is not None else random.randrange(1_000_000)
+    # В режиме random при --count режимы чередуются, чтобы фоны не повторялись.
+    order = list(MODES)
+    random.Random(seed).shuffle(order)
     for n in range(args.count):
-        mode = args.mode if args.mode != "random" else random.Random(seed + n).choice(list(MODES))
+        mode = args.mode if args.mode != "random" else order[n % len(order)]
         out = args.out if args.count == 1 else \
             args.out.with_name(f"{args.out.stem}_{n + 1}_{mode}{args.out.suffix}")
         generate(out, mode, args.duration, seed + n)
